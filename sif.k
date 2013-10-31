@@ -22,11 +22,11 @@ module SIF-SYNTAX
      syntax Term ::= "(" Term ")" [bracket]
                    | Id
                    | "*"
-                   | "veritum" | "falsum"
+                   | "true" | "false"
                    | Loc
                    > "val" Term
                    > Term Term
-                   > "lambda" Id "is" Type "." Term [binder]
+                   > "lambda" Id ":" Type "." Term [binder]
                    > "if" Term "then" Term "else" Term
 
      syntax Exp ::= "[" Term "]"
@@ -34,8 +34,6 @@ module SIF-SYNTAX
                   | Term ":=" Term
                   | "ref" SecLvlSub "(" Term "," Type ")"
                   > "let" "val" Id "=" Term "in" Exp [binder]
-
-     syntax Term ::= "true"
 
 endmodule
 
@@ -45,6 +43,6 @@ module SIF
 
      configuration <k> $PGM:K </k>
 
-     rule (lambda X:Id is _ . E:Term) V:Term => E[V / X]
+     rule (lambda X:Id : _ . E:Term) V:Term => E[V / X]
 
 endmodule
