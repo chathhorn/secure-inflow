@@ -9,7 +9,7 @@ module SIF
           <k> $PGM:K </k>
           <store> .Map </store> // Loc |-> Value (H)
           <types> .Map </types> // Loc |-> Type (Sigma)
-          <levels> .Map </levels> // Loc |-> SecLvlSub
+          <levels> .Map </levels> // Loc |-> SecLvl
 
      syntax KResult ::= Value
 

@@ -6,20 +6,22 @@ module SIF-SYNTAX
 
      syntax SecLvl ::= "top" | "bot"
 
-     syntax SecLvlSub ::= "(" SecLvl "," SecLvl ")"
+     syntax OpLvl ::= "(" SecLvl "," SecLvl ")"
 
      syntax Loc ::= "null"
 
+     syntax One ::= "()" // Single-element type (and its single element).
+
      syntax Type ::= "(" Type ")" [bracket]
-                   | "()" // Single-element type (and its single element).
+                   | One
                    | "bool" 
                    > "ref" "(" SecLvl ")" Type
                    | "refr" "(" SecLvl ")" Type
                    | "refw" "(" SecLvl ")" Type
-                   | "O" SecLvlSub Type
+                   | "O" OpLvl Type
                    > Type "->" Type
 
-     syntax Value ::= Id | "()" | Bool | Loc
+     syntax Value ::= Id | One | Bool | Loc
 
      syntax Term ::= "(" Term ")" [bracket]
                    | Value
