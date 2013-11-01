@@ -11,15 +11,15 @@ module SIF-SYNTAX
      syntax Loc ::= "null"
 
      syntax Type ::= "(" Type ")" [bracket]
-                   | "un" 
+                   | "()" // Single-element type (and its single element).
                    | "bool" 
-                   > "ref" SecLvlSub Type
+                   > "ref" "(" SecLvl ")" Type
                    | "refr" "(" SecLvl ")" Type
                    | "refw" "(" SecLvl ")" Type
                    | "O" SecLvlSub Type
                    > Type "->" Type
 
-     syntax Value ::= Id | "*" | Bool | Loc
+     syntax Value ::= Id | "()" | Bool | Loc
 
      syntax Term ::= "(" Term ")" [bracket]
                    | Value
@@ -31,7 +31,7 @@ module SIF-SYNTAX
      syntax Exp ::= "[" Term "]" [strict]
                   | "!" Term [strict]
                   | Term ":=" Term [strict]
-                  | "ref" SecLvlSub "(" Term ":" Type ")" [strict(2)]
+                  | "ref" "(" SecLvl ")" "(" Term ":" Type ")" [strict(2)]
                   > "let" "val" Id "=" Term "in" Exp [binder, strict(2)]
 
 endmodule

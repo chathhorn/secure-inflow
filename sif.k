@@ -19,7 +19,7 @@ module SIF
      rule (lambda X:Id : _ . E:Term) V:Term => E[V / X]
 
      // Assignment.
-     rule <k> L:Loc := V:Value => [*] ...</k>
+     rule <k> L:Loc := V:Value => [()] ...</k>
           <store> Sto:Map => Sto[V / L] </store>
 
      // Bang.
@@ -42,7 +42,7 @@ module SIF
      rule let val X:Id = (val [V:Value]) in E:Exp => E[V / X]
 
      // Ref.
-     rule <k> ref Lvl:SecLvlSub ( V:Value : A:Type ) => [L] ...</k>
+     rule <k> ref(Lvl:SecLvl) ( V:Value : A:Type ) => [L] ...</k>
           <store> Sto:Map => Sto[V / L] </store>
           <types> Types:Map => Types[A / L] </types>
           <levels> Lvls:Map => Lvls[Lvl / L] </levels>
