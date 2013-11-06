@@ -34,8 +34,6 @@ instance Loc RefW where
 instance Loc r => Eq (r a) where
       x == y = pos x == pos y
 
-data Var = Var String
-
 -- Type annotations.
 data T where
       TOne :: T
