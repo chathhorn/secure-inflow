@@ -8,21 +8,21 @@ module SifShallow where
 import Data.Dynamic
 import Data.Maybe
 
-data T = T deriving (Typeable)
-data B = B deriving (Typeable)
+data H = H deriving (Typeable)
+data L = L deriving (Typeable)
 
-data SecLvl = Bot | Top
+data SecLvl = Lo | Hi
       deriving (Eq, Ord, Show)
 
 instance Ord (SecLvl, SecLvl) where
       (r, w) <= (r', w') = (r <= r') && (w' <= w)
 
-lo = (Bot, Top)
-hi = (Top, Bot)
+lo = (Lo, Hi)
+hi = (Hi, Lo)
 
 --join :: (SecLvl, SecLvl) -> (SecLvl, SecLvl) -> (SecLvl, SecLvl)
-join (Bot, Bot) (Top, Top) = hi
-join (Top, Top) (Bot, Bot) = hi
+join (Lo, Lo) (Hi, Hi) = hi
+join (Hi, Hi) (Lo, Lo) = hi
 join a b | a <= b = b
          | otherwise = a
 
@@ -35,10 +35,10 @@ pos (Ref x) = x
 
 class Lvl a where
       lvl :: Ref a b -> SecLvl
-instance Lvl B where
-      lvl _ = Bot
-instance Lvl T where
-      lvl _ = Top
+instance Lvl L where
+      lvl _ = Lo
+instance Lvl H where
+      lvl _ = Hi
 
 putV :: Typeable a => a -> Dynamic
 putV = toDyn
@@ -76,24 +76,24 @@ instance Monad O where
             in (x', join olvl olvl', s'')
 
 --informs :: Typeable a => SecLvl -> a -> Bool
-informs Bot _ = True
-informs Top a = informs' $ typeOf a
+informs Lo _ = True
+informs Hi a = informs' $ typeOf a
 
 isBool x = x == typeOf True
 isUnit x = x == typeOf ()
-isRefT x = 
-      (typeRepTyCon x) == (typeRepTyCon $ typeOf (undefined::Ref T ()))
-      && (head $ typeRepArgs x) == (typeOf T)
+isRefH x = 
+      (typeRepTyCon x) == (typeRepTyCon $ typeOf (undefined::Ref H ()))
+      && (head $ typeRepArgs x) == (typeOf H)
 
 --informs' :: TypeRep -> Bool
 informs' t 
       | isBool t = False
       | isUnit t = True
-      | isRefT t = True
+      | isRefH t = True
       | otherwise = informs' $ last $ typeRepArgs t
       
 --br :: (SecLvl, SecLvl) -> (SecLvl, SecLvl)
-br (r, w) = (Bot, w)
+br (r, w) = (Lo, w)
 
 --demote' :: Typeable a => (a, (SecLvl, SecLvl), Store) -> (a, (SecLvl, SecLvl), Store)
 demote' (a, olvl, s) 
@@ -109,31 +109,34 @@ alloc _ v = demote $ O $ \s ->
       in (newRef, lo, Store (tweak newRef v (sto s)) $ (nxtPos s) + 1)
 
 --(.=) :: (Lvl s, Typeable a) => Ref s a -> a -> O ()
-r .= v = demote $ O $ \s -> ((), (Bot, (lvl r)), Store (tweak r v $ sto s) $ nxtPos s)
+r .= v = demote $ O $ \s -> ((), (Lo, (lvl r)), Store (tweak r v $ sto s) $ nxtPos s)
 
 fetch :: (Lvl s, Typeable a) => Ref s a -> O a
-fetch r = demote $ O $ \s -> (getV $ sto s $ pos r, (lvl r, Top), Store (sto s) $ nxtPos s)
+fetch r = demote $ O $ \s -> (getV $ sto s $ pos r, (lvl r, Hi), Store (sto s) $ nxtPos s)
 
-initStore = Store (const $ putV (0::Int)) 0
+empty = Store (const $ putV (0::Int)) 0
 
 -- Examples
 
--- O (T, B) Bool
+-- O (H, L) Bool
 fig260 :: O Bool
 fig260 = do
-      x <- alloc B False
-      y <- alloc B False
+      x <- alloc L False
+      y <- alloc L False
       z <- do
-            secret <- alloc T True
+            secret <- alloc H True
             q <- fetch secret
             return $ if q then x else y
       z .= True
       fetch x
 
--- O (T, T) Bool -> O (B, T) ()
+hiBool :: O Bool
+hiBool = alloc H False >>= fetch
+
+-- O (H, H) Bool -> O (L, H) ()
 fig5 :: O Bool -> O ()
 fig5 c = do 
-      wref <- alloc T $ return ()
+      wref <- alloc H $ return ()
       w <- return $ do 
             b <- c
             if b then (fetch wref >>= id) else return ()
