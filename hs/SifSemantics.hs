@@ -8,7 +8,8 @@
              NoMonomorphismRestriction, 
              DeriveDataTypeable #-}
 
-module SifShallow where
+module SifSemantics
+      (O, H(H), L(L), SecLvl, run, deref, (.=), ret, require, demote, empty) where
 
 import Data.Dynamic
 import Data.Maybe
@@ -53,6 +54,11 @@ tweak r v (Store sto nxt) =
       let (RefW p) = coerceRef r
           nxt' = if p == nxt then nxt + 1 else nxt
       in Store (\x -> if x == p then putV v else sto x) nxt'
+
+lkup :: (SecLvl s, Typeable a, r :<| RefR) => r s a -> Store -> a
+lkup r s = 
+      let (RefR p) = coerceRef r
+      in getV $ sto s $ p
 
 instance Show Store where
       show s = "Store " 
@@ -113,19 +119,8 @@ class (OpLvl o, OpLvl o') => o :<: o'
 instance (r :< r', w' :< w) => (r, w) :<: (r', w')
 instance (SecLvl r, SecLvl w) => (L, H) :<: (r, w)
 
-class Demote r a
-instance Demote r ()
-instance Demote r (Ref r a)
-instance Demote r (RefR r a)
-instance Demote r (RefW r a)
-
-deref' :: (SecLvl s, Typeable a, ref :<| RefR) => ref s a -> Store -> a
-deref' r s = 
-      let (RefR p) = coerceRef r
-      in getV $ sto s $ p
-
 deref :: (Typeable a, SecLvl s, r :<| RefR, (s, H) :<: o) => r s a -> O o a
-deref r = O $ \s -> (deref' r s, s)
+deref r = O $ \s -> (lkup r s, s)
 
 (.=) :: (Typeable a, SecLvl s, r :<| RefW, (L, s) :<: o) => r s a -> a -> O o ()
 r .= v = O $ \s -> ((), tweak r v s)
@@ -136,9 +131,15 @@ ref _ v = O $ \s ->
       in (newRef, tweak newRef v s)
 
 
-ret :: ((L, H) :<: o) => a -> O o a
+ret :: (Typeable a, (L, H) :<: o) => a -> O o a
 ret a = O $ \s -> (a, s)
--- 
+
+require :: (o :<: o') => o' -> O o a -> O o' a
+require _ (O f) = O f
+
+demote :: (SecLvl r, SecLvl w) => O (r, w) a -> O (L, w) a
+demote (O f) = O f
+
 -- Examples
 
 fig260 :: O (H, L) Bool
@@ -155,13 +156,32 @@ fig260 = do
 hiBool :: O (H, H) Bool
 hiBool = ref H False >>= deref
 
-fig5 :: O (H, H) Bool -> O (H, H) ()
+--fig5 :: O (H, H) Bool -> O (L, H) ()
 fig5 c = do 
       wref <- ref H $ ret ()
       w <- ret $ do 
             b <- c
             if b then deref wref >>= id else ret ()
       wref .= w
-      w
+      demote w
+
+--data Sup m o a m' o' a'
+
+-- instance (o :<: o') => Sup m o a m o' a
+-- instance (Sup ) => Sup m o a m o' a
+
+-- A < A' and B' < B => A' -> B' < A -> B
+--
+-- RefR -> Ref  <  Ref -> RefR
+-- RefR -> RefR  <  Ref -> RefR
+-- RefR -> Ref  <  RefR -> RefR
+--
+-- RefR -> Ref  <  Ref -> RefW
+-- RefW -> Ref  <  Ref -> RefW
+-- RefW -> Ref  <  Ref -> RefR
+fun c = do
+      f <- c
+      ret (f (Ref 3))
+
 
 
