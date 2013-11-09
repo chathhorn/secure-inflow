@@ -1,9 +1,8 @@
 {-# LANGUAGE GADTs, 
              FlexibleInstances, 
-             FlexibleContexts, 
              OverlappingInstances, 
+             FlexibleContexts, 
              TypeOperators, 
-             TypeFamilies, 
              MultiParamTypeClasses, 
              NoMonomorphismRestriction, 
              DeriveDataTypeable #-}
@@ -31,11 +30,6 @@ data RefW s a where
       RefW :: (SecLvl s, Typeable a) => Int -> RefW s a
       deriving (Typeable)
 
-class Loc (r:: * -> * -> *)
-instance Loc Ref
-instance Loc RefR
-instance Loc RefW
-
 putV :: Typeable a => a -> Dynamic
 putV = toDyn
 
@@ -56,24 +50,26 @@ lkup r s =
       in getV $ sto s $ p
 
 instance Show Store where
-      show s = "Store " 
-            ++ show (map (sto s) [0 .. nxtPos s - 1]) ++ " "
-            ++ show (nxtPos s)
+      show s = show (map (sto s) [0 .. nxtPos s - 1])
 
 data O o a where 
       O :: (OpLvl o) => (Store -> (a, Store)) -> O o a
       deriving (Typeable)
 
-run :: O o a -> Store -> (a, Store)
-run (O f) = f
+
+run' :: (OpLvl o) => O o a -> Store -> (a, Store)
+run' (O f) = f
+
+run :: (OpLvl o) => o -> O o a -> Store -> (a, Store)
+run _ (O f) = f
 
 empty = Store (const $ putV (0::Int)) 0
 
 instance (OpLvl o) => Monad (O o) where
       return a = O $ \s -> (a, s)
       m >>= f = O $ \s ->
-            let (a', s') = run m s
-            in run (f a') s'
+            let (a', s') = run' m s
+            in run' (f a') s'
 
 -- informs :: Typeable a => SecLvl -> a -> Bool
 -- informs Lo _ = True
@@ -97,7 +93,7 @@ instance (OpLvl o) => Monad (O o) where
 --       | informs r a = (a, (Lo, w), s)
 --       | otherwise = (a, (r, w), s)
 
-class (Loc r, Loc r') => (r:: * -> * -> *) :<| (r':: * -> * -> *) where
+class r :<| r' where
       coerceRef :: (SecLvl s) => r s a -> r' s a
 
 instance Ref :<| RefW where
@@ -105,12 +101,14 @@ instance Ref :<| RefW where
 instance Ref :<| RefR where
       coerceRef (Ref p) = RefR p
 
+instance RefW :<| RefW where
+      coerceRef = id
+instance RefR :<| RefR where
+      coerceRef = id
+
 class (Typeable s, Show s) => SecLvl s
 instance SecLvl H
 instance SecLvl L
-
-class OpLvl o
-instance (SecLvl r, SecLvl w) => OpLvl (r, w)
 
 class (SecLvl s, SecLvl s') => s :< s'
 instance L :< H
@@ -119,8 +117,15 @@ instance H :< H
 instance (SecLvl s) => s :< H
 instance (SecLvl s) => L :< s
 
+data SNITCH = SNITCH
+
+class OpLvl o
+instance (SecLvl r, SecLvl w, r :< w) => OpLvl (r, w)
+instance OpLvl SNITCH
+
 class (OpLvl o, OpLvl o') => o :<: o'
-instance (r :< r', w' :< w) => (r, w) :<: (r', w')
+instance (r :< r', w' :< w, OpLvl (r, w), OpLvl (r', w')) => (r, w) :<: (r', w')
+instance (OpLvl o) => o :<: SNITCH
 
 deref :: (Typeable a, SecLvl s, r :<| RefR, (s, H) :<: o) => r s a -> O o a
 deref r = O $ \s -> (lkup r s, s)
@@ -139,12 +144,12 @@ ret a = O $ \s -> (a, s)
 require :: (o :<: o') => o' -> O o a -> O o' a
 require _ (O f) = O f
 
-demote :: (SecLvl r, SecLvl w) => O (r, w) a -> O (L, w) a
+demote :: (SecLvl r, SecLvl w, (L, w) :<: o) => O (r, w) a -> O o a
 demote (O f) = O f
 
 -- Examples
 
-fig260 :: O (H, L) Bool
+--fig260 :: O SNITCH Bool
 fig260 = do
       x <- ref L False
       y <- ref L False
@@ -155,10 +160,10 @@ fig260 = do
       z .= True
       deref x
 
-hiBool :: O (H, H) Bool
+--hiBool :: O (H, H) Bool
 hiBool = ref H False >>= deref
 
-fig5 :: O (H, H) Bool -> O (L, H) ()
+--fig5 :: O (H, H) Bool -> O (L, H) ()
 fig5 c = do 
       wref <- ref H $ ret ()
       w <- ret $ do 
