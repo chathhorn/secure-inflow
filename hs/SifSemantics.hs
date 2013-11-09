@@ -9,20 +9,15 @@
              DeriveDataTypeable #-}
 
 module SifSemantics
-      (O, H(H), L(L), SecLvl, run, deref, (.=), ret, require, demote, empty) where
+      (O, H(H), L(L), OpLvl, SecLvl, run, ref, deref, (.=), ret, require, demote, empty,
+      Ref, RefR, RefW,
+      (:<|), (:<:), (:<)) where
 
 import Data.Dynamic
 import Data.Maybe
 
-data H = H deriving (Typeable)
-data L = L deriving (Typeable)
-
-class (Typeable s) => SecLvl s
-instance SecLvl H
-instance SecLvl L
-
-class OpLvl o
-instance (SecLvl r, SecLvl w) => OpLvl (r, w)
+data H = H deriving (Typeable, Show)
+data L = L deriving (Typeable, Show)
 
 data Ref s a where
       Ref :: (SecLvl s, Typeable a) => Int -> Ref s a
@@ -72,6 +67,8 @@ data O o a where
 run :: O o a -> Store -> (a, Store)
 run (O f) = f
 
+empty = Store (const $ putV (0::Int)) 0
+
 instance (OpLvl o) => Monad (O o) where
       return a = O $ \s -> (a, s)
       m >>= f = O $ \s ->
@@ -100,8 +97,6 @@ instance (OpLvl o) => Monad (O o) where
 --       | informs r a = (a, (Lo, w), s)
 --       | otherwise = (a, (r, w), s)
 
-empty = Store (const $ putV (0::Int)) 0
-
 class (Loc r, Loc r') => (r:: * -> * -> *) :<| (r':: * -> * -> *) where
       coerceRef :: (SecLvl s) => r s a -> r' s a
 
@@ -110,14 +105,22 @@ instance Ref :<| RefW where
 instance Ref :<| RefR where
       coerceRef (Ref p) = RefR p
 
+class (Typeable s, Show s) => SecLvl s
+instance SecLvl H
+instance SecLvl L
+
+class OpLvl o
+instance (SecLvl r, SecLvl w) => OpLvl (r, w)
+
 class (SecLvl s, SecLvl s') => s :< s'
 instance L :< H
 instance L :< L
 instance H :< H
+instance (SecLvl s) => s :< H
+instance (SecLvl s) => L :< s
 
 class (OpLvl o, OpLvl o') => o :<: o'
 instance (r :< r', w' :< w) => (r, w) :<: (r', w')
-instance (SecLvl r, SecLvl w) => (L, H) :<: (r, w)
 
 deref :: (Typeable a, SecLvl s, r :<| RefR, (s, H) :<: o) => r s a -> O o a
 deref r = O $ \s -> (lkup r s, s)
@@ -125,11 +128,10 @@ deref r = O $ \s -> (lkup r s, s)
 (.=) :: (Typeable a, SecLvl s, r :<| RefW, (L, s) :<: o) => r s a -> a -> O o ()
 r .= v = O $ \s -> ((), tweak r v s)
 
-ref :: (Typeable a, SecLvl s, (L, H) :<: o) => s -> a -> O o (Ref s a)
+ref :: (Typeable a, SecLvl s, OpLvl o) => s -> a -> O o (Ref s a)
 ref _ v = O $ \s ->
       let newRef = Ref (nxtPos s)
       in (newRef, tweak newRef v s)
-
 
 ret :: (Typeable a, (L, H) :<: o) => a -> O o a
 ret a = O $ \s -> (a, s)
@@ -156,7 +158,7 @@ fig260 = do
 hiBool :: O (H, H) Bool
 hiBool = ref H False >>= deref
 
---fig5 :: O (H, H) Bool -> O (L, H) ()
+fig5 :: O (H, H) Bool -> O (L, H) ()
 fig5 c = do 
       wref <- ref H $ ret ()
       w <- ret $ do 
