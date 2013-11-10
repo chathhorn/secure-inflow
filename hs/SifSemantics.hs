@@ -68,7 +68,7 @@ data O o a where
 --run' :: (OpLvl o) => O o a -> Store -> (a, Store)
 run' (O f) = f
 
-run :: (C a o' o, OpLvl o, OpLvl o', Demotable a) => o -> O o' a -> Store -> (a, Store)
+run :: (Demote a o' o, OpLvl o, OpLvl o', Demotable a) => o -> O o' a -> Store -> (a, Store)
 run o m = run' $ require o $ demote m
 
 empty = Store (const $ putV (0::Int)) 0
@@ -111,6 +111,33 @@ class (OpLvl o, OpLvl o') => o :<: o'
 instance (r :<. r', w' :<. w, OpLvl (r, w), OpLvl (r', w')) => (r, w) :<: (r', w')
 instance (OpLvl o) => o :<: SNITCH
 
+class Demotable a where
+      type Demote a o o' :: Constraint
+
+-- Demote OK.
+instance Demotable () where
+      type Demote () o o' = ()
+
+instance Demotable (Ref H a) where
+      type Demote (Ref H a) o o' = ()
+
+instance Demotable (O (H, H) a) where
+      type Demote (O (H, H) a) o o' = ()
+
+-- Demote not OK.
+instance Demotable Bool where
+      type Demote Bool o o' = o ~ o'
+
+-- Demote maybe OK.
+instance Demotable a => Demotable (Ref L a) where
+      type Demote (Ref L a) o o' = Demote a o o'
+
+instance Demotable a => Demotable (O (L, w) a) where
+      type Demote (O (L, w) a) o o' = Demote a o o'
+
+instance Demotable a => Demotable (b -> a) where
+      type Demote (b -> a) o o' = Demote a o o'
+
 deref :: (Typeable a, SecLvl s, r :< RefR, (s, H) :<: o) => r s a -> O o a
 deref r = O $ \s -> (lkup r s, s)
 
@@ -128,51 +155,8 @@ ret a = O $ \s -> (a, s)
 require :: (OpLvl o) => o -> O o a -> O o a
 require _ = id
 
-class Demotable a where
-      type C a o o' :: Constraint
-      demote :: (C a o o', OpLvl o, OpLvl o') => O o a -> O o' a
-
--- Demote OK.
-instance Demotable () where
-      type C () o o' = ()
-      demote (O f) = O f
-
-instance Demotable (Ref H a) where
-      type C (Ref H a) o o' = ()
-      demote (O f) = O f
-
-instance Demotable (Ref L ()) where
-      type C (Ref L ()) o o' = ()
-      demote (O f) = O f
-
-instance Demotable (O (H, H) a) where
-      type C (O (H, H) a) o o' = ()
-      demote (O f) = O f
-
-instance Demotable (O (L, w) ()) where
-      type C (O (L, w) ()) o o' = ()
-      demote (O f) = O f
-
-instance Demotable (a -> ()) where
-      type C (a -> ()) o o' = ()
-      demote (O f) = O f
-
--- Demote not OK.
-instance Demotable Bool where
-      type C Bool o o' = o ~ o'
-      demote (O f) = O f
-
-instance Demotable (Ref L Bool) where
-      type C (Ref L Bool) o o' = o ~ o'
-      demote (O f) = O f
-
-instance Demotable (O (L, w) Bool) where
-      type C (O (L, w) Bool) o o' = o ~ o'
-      demote (O f) = O f
-
-instance Demotable (a -> Bool) where
-      type C (a -> Bool) o o' = o ~ o'
-      demote (O f) = O f
+demote :: (Demote a o o', OpLvl o, OpLvl o') => O o a -> O o' a
+demote (O f) = O f
 
 -- Examples
 
