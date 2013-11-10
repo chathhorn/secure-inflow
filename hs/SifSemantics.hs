@@ -137,6 +137,12 @@ instance Demotable a => Demotable (O (L, w) a) where
 instance Demotable a => Demotable (b -> a) where
       type Demote (b -> a) o o' = Demote a o o'
 
+demote :: (Demote a o o', OpLvl o, OpLvl o') => O o a -> O o' a
+demote (O f) = O f
+
+require :: (OpLvl o) => o -> O o a -> O o a
+require _ = id
+
 deref :: (Typeable a, SecLvl s, r :< RefR, (s, H) :<: o) => r s a -> O o a
 deref r = O $ \s -> (lkup r s, s)
 
@@ -148,14 +154,8 @@ ref _ v = O $ \s ->
       let newRef = Ref (nxtPos s)
       in (newRef, tweak newRef v s)
 
-ret :: (Typeable a, (L, H) :<: o) => a -> O o a
+ret :: (Typeable a, OpLvl o) => a -> O o a
 ret a = O $ \s -> (a, s)
-
-require :: (OpLvl o) => o -> O o a -> O o a
-require _ = id
-
-demote :: (Demote a o o', OpLvl o, OpLvl o') => O o a -> O o' a
-demote (O f) = O f
 
 -- Examples
 
