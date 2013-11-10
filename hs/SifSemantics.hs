@@ -102,40 +102,35 @@ instance H :<. H
 instance (SecLvl s) => s :<. H
 instance (SecLvl s) => L :<. s
 
-class OpLvl o
-instance (SecLvl r, SecLvl w, r :<. w) => OpLvl (r, w)
-instance OpLvl SNITCH
+class OpLvl o where
+      olvl :: O o a -> o
+instance OpLvl (L, H) where
+      olvl _ = (L, H)
+instance OpLvl (L, L) where
+      olvl _ = (L, L)
+instance OpLvl (H, H) where
+      olvl _ = (H, H)
+instance OpLvl SNITCH where
+      olvl _ = SNITCH
 
 class (OpLvl o, OpLvl o') => o :<: o'
 instance (r :<. r', w' :<. w, OpLvl (r, w), OpLvl (r', w')) => (r, w) :<: (r', w')
 instance (OpLvl o) => o :<: SNITCH
 
-class Demotable a where
-      type Demote a o o' :: Constraint
+type family Demote a o o' :: Constraint
 
 -- Demote OK.
-instance Demotable () where
-      type Demote () o o' = ()
-
-instance Demotable (Ref H a) where
-      type Demote (Ref H a) o o' = ()
-
-instance Demotable (O (H, H) a) where
-      type Demote (O (H, H) a) o o' = ()
+type instance Demote () o o' = ()
+type instance Demote (Ref H a) o o' = ()
+type instance Demote (O (H, H) a) o o' = ()
 
 -- Demote not OK.
-instance Demotable Bool where
-      type Demote Bool o o' = o ~ o'
+type instance Demote Bool o o' = o ~ o'
 
 -- Demote maybe OK.
-instance Demotable a => Demotable (Ref L a) where
-      type Demote (Ref L a) o o' = Demote a o o'
-
-instance Demotable a => Demotable (O (L, w) a) where
-      type Demote (O (L, w) a) o o' = Demote a o o'
-
-instance Demotable a => Demotable (b -> a) where
-      type Demote (b -> a) o o' = Demote a o o'
+type instance Demote (Ref L a) o o' = Demote a o o'
+type instance Demote (O (L, w) a) o o' = Demote a o o'
+type instance Demote (b -> a) o o' = Demote a o o'
 
 demote :: (Demote a o o', OpLvl o, OpLvl o') => O o a -> O o' a
 demote (O f) = O f
