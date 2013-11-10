@@ -64,11 +64,10 @@ data O o a where
       O :: (OpLvl o) => (Store -> (a, Store)) -> O o a
       deriving (Typeable)
 
-
---run' :: (OpLvl o) => O o a -> Store -> (a, Store)
+run' :: (OpLvl o) => O o a -> Store -> (a, Store)
 run' (O f) = f
 
-run :: (Demote a o' o, OpLvl o, OpLvl o', Demotable a) => o -> O o' a -> Store -> (a, Store)
+run :: (Demote a o' o, OpLvl o, OpLvl o') => o -> O o' a -> Store -> (a, Store)
 run o m = run' $ require o $ demote m
 
 empty = Store (const $ putV (0::Int)) 0
