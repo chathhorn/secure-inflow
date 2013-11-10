@@ -2,33 +2,41 @@
              FlexibleInstances, 
              OverlappingInstances, 
              FlexibleContexts, 
+             StandaloneDeriving, 
+             ConstraintKinds, 
+             TypeFamilies, 
              TypeOperators, 
              MultiParamTypeClasses, 
              NoMonomorphismRestriction, 
              DeriveDataTypeable #-}
 
 module SifSemantics
-      (O, H(H), L(L), OpLvl, SecLvl, run, ref, deref, (.=), ret, require, demote, empty,
+      (O, H(..), L(..), SNITCH(..), OpLvl, SecLvl, run, ref, deref, (.=), ret, require, demote, empty,
       Ref, RefR, RefW,
-      (:<|), (:<:), (:<)) where
+      (:<), (:<:), (:<.)) where
 
 import Data.Dynamic
 import Data.Maybe
+import GHC.Prim
 
 data H = H deriving (Typeable, Show)
 data L = L deriving (Typeable, Show)
+data SNITCH = SNITCH deriving (Typeable, Show)
 
 data Ref s a where
       Ref :: (SecLvl s, Typeable a) => Int -> Ref s a
       deriving (Typeable)
+deriving instance Show (Ref s a)
 
 data RefR s a where
       RefR :: (SecLvl s, Typeable a) => Int -> RefR s a
       deriving (Typeable)
+deriving instance Show (RefR s a)
 
 data RefW s a where
       RefW :: (SecLvl s, Typeable a) => Int -> RefW s a
       deriving (Typeable)
+deriving instance Show (RefW s a)
 
 putV :: Typeable a => a -> Dynamic
 putV = toDyn
@@ -38,13 +46,13 @@ getV = fromJust . fromDynamic
 
 data Store = Store {sto :: Int -> Dynamic, nxtPos :: Int}
 
-tweak :: (Typeable a, SecLvl s, r :<| RefW) => r s a -> a -> Store -> Store
+tweak :: (Typeable a, SecLvl s, r :< RefW) => r s a -> a -> Store -> Store
 tweak r v (Store sto nxt) = 
       let (RefW p) = coerceRef r
           nxt' = if p == nxt then nxt + 1 else nxt
       in Store (\x -> if x == p then putV v else sto x) nxt'
 
-lkup :: (SecLvl s, Typeable a, r :<| RefR) => r s a -> Store -> a
+lkup :: (SecLvl s, Typeable a, r :< RefR) => r s a -> Store -> a
 lkup r s = 
       let (RefR p) = coerceRef r
       in getV $ sto s $ p
@@ -57,11 +65,11 @@ data O o a where
       deriving (Typeable)
 
 
-run' :: (OpLvl o) => O o a -> Store -> (a, Store)
+--run' :: (OpLvl o) => O o a -> Store -> (a, Store)
 run' (O f) = f
 
-run :: (OpLvl o) => o -> O o a -> Store -> (a, Store)
-run _ (O f) = f
+run :: (C a o' o, OpLvl o, OpLvl o', Demotable a) => o -> O o' a -> Store -> (a, Store)
+run o m = run' $ require o $ demote m
 
 empty = Store (const $ putV (0::Int)) 0
 
@@ -71,66 +79,42 @@ instance (OpLvl o) => Monad (O o) where
             let (a', s') = run' m s
             in run' (f a') s'
 
--- informs :: Typeable a => SecLvl -> a -> Bool
--- informs Lo _ = True
--- informs Hi a = informs' $ typeOf a
--- 
--- isBool x = x == typeOf True
--- isUnit x = x == typeOf ()
--- isRefH x = 
---       typeRepTyCon x == typeRepTyCon (typeOf (undefined::Ref H ()))
---       && head (typeRepArgs x) == typeOf H
--- 
--- informs' :: TypeRep -> Bool
--- informs' t 
---       | isBool t = False
---       | isUnit t = True
---       | isRefH t = True
---       | otherwise = informs' $ last $ typeRepArgs t
---       
--- demote :: Typeable a => (a, (SecLvl, SecLvl), Store) -> (a, (SecLvl, SecLvl), Store)
--- demote (a, (r, w), s) 
---       | informs r a = (a, (Lo, w), s)
---       | otherwise = (a, (r, w), s)
-
-class r :<| r' where
+class r :< r' where
       coerceRef :: (SecLvl s) => r s a -> r' s a
 
-instance Ref :<| RefW where
+instance Ref :< RefW where
       coerceRef (Ref p) = RefW p
-instance Ref :<| RefR where
+instance Ref :< RefR where
       coerceRef (Ref p) = RefR p
 
-instance RefW :<| RefW where
+instance RefW :< RefW where
       coerceRef = id
-instance RefR :<| RefR where
+instance RefR :< RefR where
       coerceRef = id
 
 class (Typeable s, Show s) => SecLvl s
 instance SecLvl H
 instance SecLvl L
 
-class (SecLvl s, SecLvl s') => s :< s'
-instance L :< H
-instance L :< L
-instance H :< H
-instance (SecLvl s) => s :< H
-instance (SecLvl s) => L :< s
-
-data SNITCH = SNITCH
+class (SecLvl s, SecLvl s') => s :<. s'
+instance L :<. H
+instance L :<. L
+instance H :<. H
+instance (SecLvl s) => s :<. H
+instance (SecLvl s) => L :<. s
 
 class OpLvl o
-instance (SecLvl r, SecLvl w, r :< w) => OpLvl (r, w)
+instance (SecLvl r, SecLvl w, r :<. w) => OpLvl (r, w)
 instance OpLvl SNITCH
 
 class (OpLvl o, OpLvl o') => o :<: o'
-instance (r :< r', w' :< w, OpLvl (r, w), OpLvl (r', w')) => (r, w) :<: (r', w')
+instance (r :<. r', w' :<. w, OpLvl (r, w), OpLvl (r', w')) => (r, w) :<: (r', w')
 instance (OpLvl o) => o :<: SNITCH
 
-deref :: (Typeable a, SecLvl s, r :<| RefR, (s, H) :<: o) => r s a -> O o a
+deref :: (Typeable a, SecLvl s, r :< RefR, (s, H) :<: o) => r s a -> O o a
 deref r = O $ \s -> (lkup r s, s)
 
-(.=) :: (Typeable a, SecLvl s, r :<| RefW, (L, s) :<: o) => r s a -> a -> O o ()
+(.=) :: (Typeable a, SecLvl s, r :< RefW, (L, s) :<: o) => r s a -> a -> O o ()
 r .= v = O $ \s -> ((), tweak r v s)
 
 ref :: (Typeable a, SecLvl s, OpLvl o) => s -> a -> O o (Ref s a)
@@ -141,11 +125,54 @@ ref _ v = O $ \s ->
 ret :: (Typeable a, (L, H) :<: o) => a -> O o a
 ret a = O $ \s -> (a, s)
 
-require :: (o :<: o') => o' -> O o a -> O o' a
-require _ (O f) = O f
+require :: (OpLvl o) => o -> O o a -> O o a
+require _ = id
 
-demote :: (SecLvl r, SecLvl w, (L, w) :<: o) => O (r, w) a -> O o a
-demote (O f) = O f
+class Demotable a where
+      type C a o o' :: Constraint
+      demote :: (C a o o', OpLvl o, OpLvl o') => O o a -> O o' a
+
+-- Demote OK.
+instance Demotable () where
+      type C () o o' = ()
+      demote (O f) = O f
+
+instance Demotable (Ref H a) where
+      type C (Ref H a) o o' = ()
+      demote (O f) = O f
+
+instance Demotable (Ref L ()) where
+      type C (Ref L ()) o o' = ()
+      demote (O f) = O f
+
+instance Demotable (O (H, H) a) where
+      type C (O (H, H) a) o o' = ()
+      demote (O f) = O f
+
+instance Demotable (O (L, w) ()) where
+      type C (O (L, w) ()) o o' = ()
+      demote (O f) = O f
+
+instance Demotable (a -> ()) where
+      type C (a -> ()) o o' = ()
+      demote (O f) = O f
+
+-- Demote not OK.
+instance Demotable Bool where
+      type C Bool o o' = o ~ o'
+      demote (O f) = O f
+
+instance Demotable (Ref L Bool) where
+      type C (Ref L Bool) o o' = o ~ o'
+      demote (O f) = O f
+
+instance Demotable (O (L, w) Bool) where
+      type C (O (L, w) Bool) o o' = o ~ o'
+      demote (O f) = O f
+
+instance Demotable (a -> Bool) where
+      type C (a -> Bool) o o' = o ~ o'
+      demote (O f) = O f
 
 -- Examples
 
@@ -167,28 +194,8 @@ hiBool = ref H False >>= deref
 fig5 c = do 
       wref <- ref H $ ret ()
       w <- ret $ do 
-            b <- c
+            b <- require (H, H) c
             if b then deref wref >>= id else ret ()
       wref .= w
-      demote w
-
---data Sup m o a m' o' a'
-
--- instance (o :<: o') => Sup m o a m o' a
--- instance (Sup ) => Sup m o a m o' a
-
--- A < A' and B' < B => A' -> B' < A -> B
---
--- RefR -> Ref  <  Ref -> RefR
--- RefR -> RefR  <  Ref -> RefR
--- RefR -> Ref  <  RefR -> RefR
---
--- RefR -> Ref  <  Ref -> RefW
--- RefW -> Ref  <  Ref -> RefW
--- RefW -> Ref  <  Ref -> RefR
-fun c = do
-      f <- c
-      ret (f (Ref 3))
-
-
+      w
 

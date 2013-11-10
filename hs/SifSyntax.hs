@@ -1,15 +1,13 @@
 {-# LANGUAGE GADTs, 
              TypeOperators,
              DeriveDataTypeable,
+             StandaloneDeriving,
              FlexibleContexts,
              FlexibleInstances #-}
 module SifSyntax where
 
 import SifSemantics
 import Data.Typeable
-
-
-type NOSEC = (H, L)
 
 -- Type annotations.
 data T where
@@ -69,11 +67,18 @@ instance Show T where
 data Val where 
       VB :: Bool -> Val 
       VU :: Val
-      VL :: Int -> Val
       VF :: (Val -> Val) -> Val
-      VO :: (O NOSEC Term) -> Val
+      VO' :: (O SNITCH a) -> Val
+      VO :: (O SNITCH Term) -> Val
       VR :: (SecLvl s) => Ref s Term -> Val
       deriving (Typeable)
+
+instance Show Val where
+      show (VB b) = show b
+      show (VU) = show ()
+      show (VO' _) = "<< O SNITCH a >>"
+      show (VO _) = "<< O SNITCH Term >>"
+      show (VR r) = show r
 
 data Term where
       Const :: Val -> Term
@@ -84,18 +89,31 @@ data Term where
       Abs :: Term -> T -> Term -> Term
       deriving (Typeable)
 
+deriving instance Show Term
+
 data Exp a where
       Return' :: a -> Exp a
       Return :: Term -> Exp Term
       Read :: Term -> Exp Term
       Write :: Term -> Term -> Exp Term
       Alloc :: (SecLvl s) => s -> Term -> Exp Term
-      Let :: Exp a -> (a -> Exp b) -> Exp b
+      Let' :: Exp a -> (a -> Exp b) -> Exp b
+      Let :: Exp Term -> (Term -> Exp Term) -> Exp Term
       deriving (Typeable)
+
+instance Show (Exp a) where
+      show _ = "<< Exp a >>"
+      -- show (Return' _) = "Return'"
+      -- show (Return t) = "Return " ++ (show t)
+      -- show (Read t) = "Read " ++ (show t)
+      -- show (Write r v) = "Write " ++ (show r) ++ " " ++ (show v)
+      -- show (Alloc s t) = "Alloc " ++ (show s) ++ " " ++ (show t)
+      -- show (Let' m f) = "Let'"
+      -- show (Let m f) = "Let " ++ (show m) ++ " " ++ (show f) 
 
 instance Monad Exp where
       return = Return'
-      (>>=) = Let
+      (>>=) = Let'
 
 subst' :: Term -> Term -> Exp a -> Exp a
 subst' x v (Return t) = Return $ subst x v t
@@ -122,7 +140,6 @@ evalT (If b x y) =
 evalT (App x y) = 
       let (VF f) = evalT x
           v = evalT y
-
       in f v
 
 evalT (Abs x _ t) = VF $ \v -> 
@@ -132,13 +149,16 @@ evalT (Do e) = evalE e
 
 evalE :: Exp a -> Val
 evalE (Return a) = VO $ ret a
-evalE (Read r) = case (evalT r) of
+evalE (Read r) = case evalT r of
       (VR r') -> VO $ deref r'
+evalE (Write r v) = case evalT r of
+      (VR r') -> VO $ r' .=  (Const $ evalT v) >> (return $ Const VU)
+evalE (Alloc s a) = VO $ (ref s $ Const $ evalT a) >>= (return . Const . VR)
+evalE (Let m f) = VO $ case evalE m of
+      (VO m') -> m' >>= (\x -> case evalE (f x) of 
+            (VO m'') -> m'')
 
-evalE (Write r v) = case (evalT r) of
-      (VR r') -> VO $ Const $ r' .=  (evalT v)
 
---evalE (Alloc s a) = VO $ ref s $ evalT a
 --evalE (Let m f) = VO $ (evalE m) >>= \x -> (evalE $ f x)
 
 --typeT :: ObjType a => Term -> T
@@ -170,3 +190,6 @@ fig260 = do
       Write z true
       Read x
       
+unwrap :: Val -> O SNITCH Term
+unwrap (VO m) = m
+
