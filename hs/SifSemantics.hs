@@ -64,19 +64,16 @@ data O o a where
       O :: (OpLvl o) => (Store -> (a, Store)) -> O o a
       deriving (Typeable)
 
-run' :: (OpLvl o) => O o a -> Store -> (a, Store)
-run' (O f) = f
-
-run :: (Demote a o' o, OpLvl o, OpLvl o') => o -> O o' a -> Store -> (a, Store)
-run o m = run' $ require o $ demote m
+run :: (OpLvl o) => O o a -> Store -> (a, Store)
+run (O f) = f
 
 empty = Store (const $ putV (0::Int)) 0
 
 instance (OpLvl o) => Monad (O o) where
       return a = O $ \s -> (a, s)
       m >>= f = O $ \s ->
-            let (a', s') = run' m s
-            in run' (f a') s'
+            let (a', s') = run m s
+            in run (f a') s'
 
 class r :< r' where
       coerceRef :: (SecLvl s) => r s a -> r' s a
@@ -175,5 +172,5 @@ fig5 c = do
             b <- require (H, H) c
             if b then deref wref >>= id else ret ()
       wref .= w
-      w
+      demote w
 
