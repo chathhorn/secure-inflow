@@ -180,5 +180,5 @@ fig5 c = do
             b <- require (H, H) c
             if b then deref wref >>= id else return ()
       wref .= w
-      w
+      demote w
 
