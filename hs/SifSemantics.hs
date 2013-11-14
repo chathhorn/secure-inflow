@@ -13,7 +13,7 @@
 module SifSemantics
       (O, H(..), L(..), SNITCH(..), OpLvl, SecLvl, run, ref, deref, (.=), require, demote, empty,
       Ref, RefR, RefW,
-      (:<), (:<:), (:<.)) where
+      (:<), (:<:)) where
 
 import Data.Dynamic
 import Data.Maybe
@@ -99,14 +99,7 @@ class (Typeable s, Show s) => SecLvl s
 instance SecLvl H
 instance SecLvl L
 
-class (SecLvl s, SecLvl s') => s :<. s'
-instance L :<. H
-instance L :<. L
-instance H :<. H
-instance (SecLvl s) => s :<. H
-instance (SecLvl s) => L :<. s
-
-class OpLvl o where
+class (Typeable o) => OpLvl o where
       olvl :: O o a -> o
 instance OpLvl (L, H) where
       olvl _ = (L, H)
@@ -119,8 +112,13 @@ instance OpLvl SNITCH where
 
 -- *** Demotion. ***
 class (OpLvl o, OpLvl o') => o :<: o'
-instance (r :<. r', w' :<. w, OpLvl (r, w), OpLvl (r', w')) => (r, w) :<: (r', w')
-instance (OpLvl o) => o :<: SNITCH
+--instance (r :<. r', w' :<. w, OpLvl (r, w), OpLvl (r', w')) => (r, w) :<: (r', w')
+instance (OpLvl o) => o :<: o
+instance (L,H) :<: (L,L)
+instance (L,H) :<: (H,H)
+instance (L,H) :<: SNITCH
+instance (L,L) :<: SNITCH
+instance (H,H) :<: SNITCH
 
 type family Demote a o o' :: Constraint
 
@@ -137,11 +135,17 @@ type instance Demote (Ref L a) o o' = Demote a o o'
 type instance Demote (O (L, w) a) o o' = Demote a o o'
 type instance Demote (b -> a) o o' = Demote a o o'
 
-demote :: (Demote a o o', OpLvl o, OpLvl o') => O o a -> O o' a
+--demote :: (Demote a o o', OpLvl o, OpLvl o') => O o a -> O o' a
 demote (O f) = O f
 
-require :: (OpLvl o) => o -> O o a -> O o a
-require _ = id
+promote :: (o :<: o') => O o a -> O o' a
+promote (O f) = O f
+
+require :: (o :<: o', o' :<: o'') => o -> O o' a -> O o'' a
+require _ = promote
+
+force :: (OpLvl o) => o -> O o a -> O o a
+force _ = id
 
 -- Read (bang).
 deref :: (Typeable a, SecLvl s, r :< RefR, (s, H) :<: o) => r s a -> O o a
@@ -173,12 +177,12 @@ fig260 = do
 --hiBool :: O (H, H) Bool
 hiBool = ref H False >>= deref
 
---fig5 :: O (H, H) Bool -> O (L, H) ()
+--fig5 :: O (H, H) Bool -> O (H, H) ()
 fig5 c = do 
       wref <- ref H $ return ()
       w <- return $ do 
-            b <- require (H, H) c
+            b <- require (H,H) c
             if b then deref wref >>= id else return ()
-      wref .= w
+      wref .= promote w
       demote w
 
